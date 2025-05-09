@@ -1,0 +1,4 @@
+SET name Ebrahim
+SET age 22
+SET Grade Good
+DEL Grade

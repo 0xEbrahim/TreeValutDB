@@ -12,7 +12,7 @@ class PersistenceEngine implements IPersistence {
   }
   append(key: string, value?: string): void {
     const text: string =
-      value === undefined ? `DEL ${key}\n` : `SET ${key} ${value}`;
+      value === undefined ? `DEL ${key}\n` : `SET ${key} ${value}\n`;
 
     fs.appendFileSync(this.filePath, text);
   }
