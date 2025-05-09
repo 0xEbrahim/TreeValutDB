@@ -1,11 +1,12 @@
 import { KeyValueStore } from "../types/kv";
-
+import PersistanceEngine from "./PersistenceEngine";
 class HashMapEngine implements KeyValueStore {
   private map: Map<string, string>;
   constructor() {
     this.map = new Map();
   }
   set(key: string, value: string): void {
+    PersistanceEngine.append(key, value);
     this.map.set(key, value);
   }
   get(key: string): string | undefined {
@@ -13,6 +14,7 @@ class HashMapEngine implements KeyValueStore {
     return undefined;
   }
   delete(key: string): boolean {
+    PersistanceEngine.append(key);
     if (this.map.has(key)) {
       this.map.delete(key);
       return true;
