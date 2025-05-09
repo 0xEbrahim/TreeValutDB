@@ -9,13 +9,21 @@ class HashMapEngine implements KeyValueStore {
     this.map.set(key, value);
   }
   get(key: string): string | undefined {
-    return this.get(key);
+    if (this.map.has(key)) return this.map.get(key);
+    return undefined;
   }
   delete(key: string): boolean {
-    return this.delete(key);
+    if (this.map.has(key)) {
+      this.map.delete(key);
+      return true;
+    }
+    return false;
   }
   has(key: string): boolean {
-    return this.has(key);
+    return this.map.has(key);
+  }
+  clear(): void {
+    this.map.clear();
   }
 }
 const engine = new HashMapEngine();
