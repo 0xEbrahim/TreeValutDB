@@ -4,10 +4,12 @@ import { KeyValueStore } from "../types/kv";
 import PersistanceEngine from "./PersistenceEngine";
 class HashMapEngine implements KeyValueStore {
   private map: Map<string, string>;
-  private filePath: string;
+  private dataFilePath: string;
+  private tempFilePath: string;
   constructor() {
     this.map = new Map();
-    this.filePath = path.join(__dirname, "../data/data.log");
+    this.dataFilePath = path.join(__dirname, "../data/data.log");
+    this.tempFilePath = path.join(__dirname, "../data/temp.log");
     this.loadFromLog();
   }
 
@@ -35,9 +37,9 @@ class HashMapEngine implements KeyValueStore {
   }
 
   private loadFromLog() {
-    if (!fs.existsSync(this.filePath)) return;
+    if (!fs.existsSync(this.dataFilePath)) return;
     let logs: string | Array<string> = fs
-      .readFileSync(this.filePath)
+      .readFileSync(this.dataFilePath)
       .toString();
     logs = logs.split("\n");
     for (let log of logs) {
@@ -51,6 +53,14 @@ class HashMapEngine implements KeyValueStore {
         this.map.delete(elements[1]);
       }
     }
+  }
+
+  compact() {
+    fs.writeFileSync(this.tempFilePath, "");
+    for (let [key, value] of this.map) {
+      fs.appendFileSync(this.tempFilePath, `SET ${key} ${value}\n`);
+    }
+    fs.renameSync(this.tempFilePath, this.dataFilePath);
   }
 }
 const engine = new HashMapEngine();
