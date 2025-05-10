@@ -1,7 +1,7 @@
 import path from "path";
 import fs from "fs";
 import { KeyValueStore } from "../types/kv";
-import PersistanceEngine from "./PersistenceEngine";
+import PersistanceEngine from "../storage/PersistenceEngine";
 class HashMapEngine implements KeyValueStore {
   private map: Map<string, string>;
   private dataFilePath: string;
