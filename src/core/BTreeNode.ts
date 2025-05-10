@@ -13,3 +13,5 @@ class BTreeNode<T extends { compareTo(other: T): number }> {
     this.parent = null;
   }
 }
+
+export default BTreeNode;
