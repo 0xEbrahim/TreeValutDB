@@ -1,4 +1,5 @@
 class BTreeNode<T extends { compareTo(other: T): number }> {
+  parent: BTreeNode<T> | null;
   keys: T[];
   t: number;
   children: BTreeNode<T>[];
@@ -9,5 +10,6 @@ class BTreeNode<T extends { compareTo(other: T): number }> {
     this.t = t;
     this.children = [];
     this.isLeaf = true;
+    this.parent = null;
   }
 }
