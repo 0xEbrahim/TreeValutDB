@@ -5,11 +5,11 @@ class BTreeNode<T extends { compareTo(other: T): number }> {
   children: BTreeNode<T>[];
   isLeaf: boolean;
 
-  constructor(t: number = 4) {
+  constructor(t: number = 4, isLeaf: boolean) {
     this.keys = [];
     this.t = t;
     this.children = [];
-    this.isLeaf = true;
+    this.isLeaf = isLeaf;
     this.parent = null;
   }
 }

@@ -4,10 +4,15 @@ import BTreeNode from "./BTreeNode";
 class BTree<T extends { compareTo(other: T): number }> implements IBTree<T> {
   rootNode: BTreeNode<T>;
   size: number;
+  private t: number;
 
-  constructor(t?: number) {
-    this.rootNode = new BTreeNode<T>(t);
+  constructor(t: number = 2) {
+    this.t = t;
+    this.rootNode = new BTreeNode<T>(t, true);
     this.size = 0;
+  }
+  split(node: BTreeNode<T>): void {
+    return this._split(node);
   }
 
   search(value: T): T | undefined {
@@ -15,234 +20,217 @@ class BTree<T extends { compareTo(other: T): number }> implements IBTree<T> {
   }
 
   insert(value: T): boolean {
-    return this._insert(this.rootNode, value);
+    if (this._insert(this.rootNode, value)) {
+      this.size++;
+      return true;
+    }
+    return false;
   }
 
   delete(value: T): boolean {
     if (this.search(value) === undefined) return false;
-    return this._delete(this.rootNode, value);
+    if (this._delete(this.rootNode, value)) {
+      this.size--;
+      return true;
+    }
+    return false;
   }
 
-  split(node: BTreeNode<T>): void {
-    this._split(node);
+  private _search(node: BTreeNode<T>, value: T): T | undefined {
+    let index = 0;
+    while (index < node.keys.length && value.compareTo(node.keys[index]) > 0) {
+      index++;
+    }
+
+    if (index < node.keys.length && value.compareTo(node.keys[index]) === 0) {
+      return node.keys[index];
+    } else if (node.isLeaf) {
+      return undefined;
+    } else {
+      return this._search(node.children[index], value);
+    }
   }
 
   private _insert(node: BTreeNode<T>, value: T): boolean {
     let index = this._findInsertionIndex(node, value);
+
     if (index < node.keys.length && node.keys[index].compareTo(value) === 0) {
-      return false;
+      return false; // Key already exists
     }
 
     if (node.isLeaf) {
-      node.keys = [
-        ...node.keys.slice(0, index),
-        value,
-        ...node.keys.slice(index),
-      ];
-      if (node.keys.length > 2 * node.t - 1) {
-        this.split(node);
+      node.keys.splice(index, 0, value);
+      if (node.keys.length > 2 * this.t - 1) {
+        this._split(node);
       }
       return true;
     } else {
-      return this._insert(node.children[index], value);
+      const success = this._insert(node.children[index], value);
+      if (node.children[index].keys.length > 2 * this.t - 1) {
+        this._split(node.children[index]);
+      }
+      return success;
+    }
+  }
+
+  private _split(node: BTreeNode<T>): void {
+    const midIndex = Math.floor(node.keys.length / 2);
+    const median = node.keys[midIndex];
+
+    const left = new BTreeNode<T>(this.t, node.isLeaf);
+    const right = new BTreeNode<T>(this.t, node.isLeaf);
+
+    left.keys = node.keys.slice(0, midIndex);
+    right.keys = node.keys.slice(midIndex + 1);
+
+    if (!node.isLeaf) {
+      left.children = node.children.slice(0, midIndex + 1);
+      right.children = node.children.slice(midIndex + 1);
+      left.children.forEach((child) => (child.parent = left));
+      right.children.forEach((child) => (child.parent = right));
+    }
+
+    const parent = node.parent || new BTreeNode<T>(this.t, false);
+
+    if (!node.parent) {
+      parent.children.push(left, right);
+      this.rootNode = parent;
+    } else {
+      const parentIndex = parent.children.indexOf(node);
+      parent.children.splice(parentIndex, 1, left, right);
+    }
+
+    left.parent = parent;
+    right.parent = parent;
+
+    const insertIndex = this._findInsertionIndex(parent, median);
+    parent.keys.splice(insertIndex, 0, median);
+
+    if (parent.keys.length > 2 * this.t - 1) {
+      this._split(parent);
     }
   }
 
   private _delete(node: BTreeNode<T>, value: T): boolean {
-    let index = this._findInsertionIndex(node, value);
+    let index = 0;
+    while (index < node.keys.length && value.compareTo(node.keys[index]) > 0) {
+      index++;
+    }
 
-    if (index < node.keys.length && node.keys[index].compareTo(value) === 0) {
+    if (index < node.keys.length && value.compareTo(node.keys[index]) === 0) {
       if (node.isLeaf) {
         node.keys.splice(index, 1);
+        this._handleUnderflow(node);
       } else {
         const predecessor = this._getPredecessor(node, index);
         node.keys[index] = predecessor;
         this._delete(node.children[index], predecessor);
-        return true;
       }
-    } else {
-      const child = node.children[index];
-      this._delete(child, value);
+      return true;
+    } else if (!node.isLeaf) {
+      const deleted = this._delete(node.children[index], value);
+      this._handleUnderflow(node.children[index]);
+      return deleted;
     }
+    return false;
+  }
 
-    if (node !== this.rootNode && node.keys.length < node.t - 1) {
-      const parent = node.parent!;
-      const curIndex = parent.children.indexOf(node);
+  private _handleUnderflow(node: BTreeNode<T>): void {
+    if (!node) return;
 
-      let leftSibling: BTreeNode<T> | null =
-        curIndex > 0 ? parent.children[curIndex - 1] : null;
-      let rightSibling: BTreeNode<T> | null =
-        curIndex + 1 < parent.children.length
-          ? parent.children[curIndex + 1]
-          : null;
+    if (node.keys.length >= this.t - 1 || node === this.rootNode) return;
 
-      if (leftSibling && leftSibling.keys.length > node.t - 1) {
-        const borrowedKey = leftSibling.keys.pop()!;
-        const parentKey = parent.keys[curIndex - 1];
-        parent.keys[curIndex - 1] = borrowedKey;
-        node.keys.unshift(parentKey);
+    const parent = node.parent!;
+    const nodeIndex = parent.children.indexOf(node);
+
+    if (nodeIndex > 0) {
+      const leftSibling = parent.children[nodeIndex - 1];
+      if (leftSibling.keys.length > this.t - 1) {
+        const separatorIndex = nodeIndex - 1;
+        node.keys.unshift(parent.keys[separatorIndex]);
+        parent.keys[separatorIndex] = leftSibling.keys.pop()!;
+
         if (!node.isLeaf) {
           const borrowedChild = leftSibling.children.pop()!;
           node.children.unshift(borrowedChild);
           borrowedChild.parent = node;
         }
-      } else if (rightSibling && rightSibling.keys.length > node.t - 1) {
-        const borrowedKey = rightSibling.keys.shift()!;
-        const parentKey = parent.keys[curIndex];
-        parent.keys[curIndex] = borrowedKey;
-        node.keys.push(parentKey);
+        return;
+      }
+    }
+
+    if (nodeIndex < parent.children.length - 1) {
+      const rightSibling = parent.children[nodeIndex + 1];
+      if (rightSibling.keys.length > this.t - 1) {
+        const separatorIndex = nodeIndex;
+        node.keys.push(parent.keys[separatorIndex]);
+        parent.keys[separatorIndex] = rightSibling.keys.shift()!;
+
         if (!node.isLeaf) {
           const borrowedChild = rightSibling.children.shift()!;
           node.children.push(borrowedChild);
           borrowedChild.parent = node;
         }
-      } else {
-        if (leftSibling) {
-          const parentKey = parent.keys[curIndex - 1];
-          leftSibling.keys.push(parentKey, ...node.keys);
-          if (!node.isLeaf) {
-            for (const child of node.children) {
-              child.parent = leftSibling;
-              leftSibling.children.push(child);
-            }
-          }
-          parent.keys.splice(curIndex - 1, 1);
-          parent.children.splice(curIndex, 1);
-        } else if (rightSibling) {
-          const parentKey = parent.keys[curIndex];
-          node.keys.push(parentKey, ...rightSibling.keys);
-          if (!node.isLeaf) {
-            for (const child of rightSibling.children) {
-              child.parent = node;
-              node.children.push(child);
-            }
-          }
-          parent.keys.splice(curIndex, 1);
-          parent.children.splice(curIndex + 1, 1);
-        }
-
-        if (parent !== this.rootNode && parent.keys.length < parent.t - 1) {
-          this._delete(parent, parent.keys[0]);
-        }
+        return;
       }
     }
 
-    if (this.rootNode.keys.length === 0 && !this.rootNode.isLeaf) {
-      this.rootNode = this.rootNode.children[0];
-      this.rootNode.parent = null;
-    }
+    if (nodeIndex > 0) {
+      const leftSibling = parent.children[nodeIndex - 1];
+      const separatorIndex = nodeIndex - 1;
 
-    return true;
-  }
+      leftSibling.keys.push(parent.keys[separatorIndex], ...node.keys);
+      parent.keys.splice(separatorIndex, 1);
 
-  private _search(node: BTreeNode<T>, value: T): T | undefined {
-    const keys = node.keys;
-    let l = 0,
-      r = keys.length - 1;
-    let found = 0;
-    while (l <= r) {
-      let mid = Math.floor((l + r) / 2);
-      let cmp = keys[mid].compareTo(value);
-      if (cmp === 0) {
-        return keys[mid];
-      } else if (cmp < 0) {
-        l = mid + 1;
-        found = mid;
-      } else {
-        r = mid - 1;
-      }
-    }
-    if (node.isLeaf) {
-      return undefined;
-    }
-    return this._search(node.children[l], value);
-  }
-
-  private _split(node: BTreeNode<T>): void {
-    let mid = Math.floor((node.keys.length - 1) / 2);
-    let value = node.keys[mid];
-
-    let leftNode: BTreeNode<T> = new BTreeNode<T>();
-    let rightNode: BTreeNode<T> = new BTreeNode<T>();
-
-    let parent = node.parent;
-    if (parent === null) {
-      parent = new BTreeNode<T>();
-      this.rootNode = parent;
-    }
-    let insertionIndex = this._findInsertionIndex(parent, value);
-    parent.keys = [
-      ...parent.keys.slice(0, insertionIndex),
-      value,
-      ...parent.keys.slice(insertionIndex),
-    ];
-
-    for (let i = 0; i < mid; i++) {
-      leftNode.keys.push(node.keys[i]);
-    }
-    for (let i = mid + 1; i < node.keys.length; i++) {
-      rightNode.keys.push(node.keys[i]);
-    }
-
-    if (!node.isLeaf) {
-      for (let i = 0; i <= mid; i++) {
-        leftNode.children.push(node.children[i]);
-        node.children[i].parent = leftNode;
+      if (!node.isLeaf) {
+        leftSibling.children.push(...node.children);
+        node.children.forEach((child) => (child.parent = leftSibling));
       }
 
-      for (let i = mid + 1; i < node.children.length; i++) {
-        rightNode.children.push(node.children[i]);
-        node.children[i].parent = rightNode;
-      }
+      parent.children.splice(nodeIndex, 1);
     } else {
-      leftNode.isLeaf = rightNode.isLeaf = true;
-    }
+      const rightSibling = parent.children[nodeIndex + 1];
+      const separatorIndex = nodeIndex;
 
-    let index = -1;
-    for (let i = 0; i < parent.children.length; i++) {
-      if (parent.children[i] === node) {
-        index = i;
-        break;
+      node.keys.push(parent.keys[separatorIndex], ...rightSibling.keys);
+      parent.keys.splice(separatorIndex, 1);
+
+      if (!node.isLeaf) {
+        node.children.push(...rightSibling.children);
+        rightSibling.children.forEach((child) => (child.parent = node));
       }
+
+      parent.children.splice(nodeIndex + 1, 1);
     }
-    parent.children.splice(index, 1);
-    parent.children.push(leftNode);
-    parent.children.push(rightNode);
 
-    leftNode.parent = parent;
-    rightNode.parent = parent;
-
-    if (parent.children.length > 2 * parent.t - 1) {
-      this._split(parent);
+    if (parent === this.rootNode && parent.keys.length === 0) {
+      this.rootNode = parent.children[0];
+      this.rootNode.parent = null;
+    } else {
+      this._handleUnderflow(parent);
     }
   }
 
   private _findInsertionIndex(node: BTreeNode<T>, value: T): number {
-    let l = 0;
-    let r = node.keys.length - 1;
-    let insertionIndex: number = 0;
-    while (l <= r) {
-      let midParent = Math.floor((l + r) / 2);
-      let cmp = node.keys[midParent].compareTo(value);
-      if (cmp === 0) {
-        insertionIndex = midParent;
-        break;
-      } else if (cmp < 0) {
-        insertionIndex = midParent + 1;
-        l = midParent + 1;
+    let low = 0,
+      high = node.keys.length;
+    while (low < high) {
+      const mid = Math.floor((low + high) / 2);
+      if (value.compareTo(node.keys[mid]) > 0) {
+        low = mid + 1;
       } else {
-        r = midParent - 1;
+        high = mid;
       }
     }
-    return insertionIndex;
+    return low;
   }
 
   private _getPredecessor(node: BTreeNode<T>, index: number): T {
-    let cur = node.children[index];
-    while (!cur.isLeaf) {
-      cur = cur.children[cur.children.length - 1];
+    let current = node.children[index];
+    while (!current.isLeaf) {
+      current = current.children[current.children.length - 1];
     }
-    return cur.keys[cur.keys.length - 1];
+    return current.keys[current.keys.length - 1];
   }
 }
 
